@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">QRSC</string>
+    <string name="start_scan">开始扫描</string>
+    <string name="stop_scan">停止扫描</string>
+    <string name="switch_camera_front">切换至前置摄像头</string>
+    <string name="switch_camera_back">切换至后置摄像头</string>
+    <string name="scan_interval">当前扫描间隔：%s 秒</string>
+    <string name="enter_black_screen">进入黑屏扫描模式</string>
+    <string name="black_screen_hint">黑屏模式下长按 2 秒恢复界面</string>
+    <string name="waiting_scan">等待扫描…</string>
+    <string name="scanning">● 扫描中</string>
+    <string name="stopped">○ 已停止</string>
+    <string name="camera_permission_required">需要相机权限才能扫描二维码</string>
+    <string name="copied_to_clipboard">已复制到剪贴板</string>
+</resources>

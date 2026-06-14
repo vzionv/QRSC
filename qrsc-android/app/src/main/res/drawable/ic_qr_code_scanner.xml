@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- QR Code outer square -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M20,20h28v8h-28zM56,20h28v8h-28zM20,60h28v8h-28zM48,48h8v8h-8zM56,56h8v8h-8zM48,64h8v8h-8zM60,60h4v4h-4zM64,48h8v8h-8zM72,52h8v8h-8zM64,64h8v8h-8zM72,72h8v8h-8z"
+        android:strokeWidth="0" />
+    <!-- Center crosshair for scanner effect -->
+    <path
+        android:fillColor="#4CAF50"
+        android:pathData="M48,44h12v2h-12zM48,62h12v2h-12zM44,48h2v12h-2zM62,48h2v12h-2z" />
+</vector>
