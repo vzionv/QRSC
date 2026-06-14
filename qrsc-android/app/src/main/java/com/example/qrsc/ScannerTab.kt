@@ -27,15 +27,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,18 +57,18 @@ import com.example.qrsc.ui.theme.TextSecondary
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-fun MainScreen(viewModel: MainViewModel) {
+fun ScannerTab(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val context = LocalContext.current
 
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
 
     val isScanning by viewModel.isScanning.collectAsState()
     val isFrontCamera by viewModel.isFrontCamera.collectAsState()
-    val scanIntervalMs by viewModel.scanIntervalMs.collectAsState()
     val currentText by viewModel.currentText.collectAsState()
     val isPreviewMode by viewModel.isPreviewMode.collectAsState()
     val previewBitmap by viewModel.previewBitmap.collectAsState()
@@ -78,6 +76,18 @@ fun MainScreen(viewModel: MainViewModel) {
     val countdownSetting by viewModel.countdownSetting.collectAsState()
     val countdownCurrent by viewModel.countdownCurrent.collectAsState()
     val isCountingDown by viewModel.isCountingDown.collectAsState()
+    val downloadHint by viewModel.downloadHint.collectAsState()
+
+    // Clear download hint after 10s of no file chunk updates (polling)
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(5000)
+            if (downloadHint.isNotEmpty() &&
+                System.currentTimeMillis() - ScannerState.lastFileChunkTimeMs >= 10000) {
+                viewModel.clearDownloadHint()
+            }
+        }
+    }
 
     // 黑屏模式是纯 UI 状态，不涉及 Service
     var isBlackScreenMode by remember { mutableStateOf(false) }
@@ -92,11 +102,6 @@ fun MainScreen(viewModel: MainViewModel) {
             viewModel.startScanning()
             context.startService(Intent(context, ScannerForegroundService::class.java))
         }
-    }
-
-    // 扫描间隔 Slider: 0f = 100ms, 1f = 5000ms
-    var sliderPosition by remember {
-        mutableFloatStateOf((scanIntervalMs - 100f) / 4900f)
     }
 
     // 黑屏模式：全黑覆盖层 + 长按 2 秒退出
@@ -127,7 +132,7 @@ fun MainScreen(viewModel: MainViewModel) {
 
     // 正常界面
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .safeDrawingPadding()
@@ -135,14 +140,6 @@ fun MainScreen(viewModel: MainViewModel) {
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = "二维码剪贴板助手",
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-
         Spacer(modifier = Modifier.height(12.dp))
 
         // 预览模式切换按钮
@@ -290,7 +287,11 @@ fun MainScreen(viewModel: MainViewModel) {
             ) {
                 val textScrollState = rememberScrollState()
                 Text(
-                    text = currentText.ifEmpty { "等待扫描…" },
+                    text = when {
+                        downloadHint.isNotEmpty() && currentText.isEmpty() -> downloadHint
+                        currentText.isEmpty() -> "等待扫描…"
+                        else -> currentText
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .verticalScroll(textScrollState)
@@ -311,7 +312,7 @@ fun MainScreen(viewModel: MainViewModel) {
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = if (isScanning) "● 扫描中" else "○ 已停止",
+            text = if (isScanning) "● 正在扫描" else "○ 等待扫描…",
             color = if (isScanning) AccentGreen else TextSecondary,
             style = MaterialTheme.typography.labelLarge
         )
@@ -376,38 +377,6 @@ fun MainScreen(viewModel: MainViewModel) {
         }
 
         Spacer(modifier = Modifier.height(20.dp))
-
-        Text(
-            text = "当前扫描间隔：${"%.1f".format(scanIntervalMs / 1000f)} 秒",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-
-        Slider(
-            value = sliderPosition,
-            onValueChange = { newPos ->
-                sliderPosition = newPos
-                val newIntervalMs = (100f + newPos * 4900f).toLong()
-                viewModel.setScanInterval(newIntervalMs.toFloat())
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = Accent,
-                activeTrackColor = Accent
-            ),
-            valueRange = 0f..1f,
-            steps = 0
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(text = "0.1 秒", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-            Text(text = "5.0 秒", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = { isBlackScreenMode = true },

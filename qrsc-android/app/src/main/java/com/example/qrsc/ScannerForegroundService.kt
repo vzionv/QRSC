@@ -14,13 +14,15 @@ import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import com.example.qrsc.camera.CameraManager
 import com.example.qrsc.camera.QRCodeAnalyzer
+import java.io.File
 
 class ScannerForegroundService : LifecycleService() {
 
     companion object {
+        private const val TAG = "ScannerService"
         private const val CHANNEL_ID = "qr_scanner_channel"
         private const val NOTIFICATION_ID = 1001
-        const val ACTION_TOGGLE_CAMERA = "action.TOGGLE_CAMERA"
+        const val ACTION_TOGGLE_CAMERA = "com.example.qrsc.action.TOGGLE_CAMERA"
         private const val MAX_NOTIFY_TEXT_LEN = 40
     }
 
@@ -56,13 +58,25 @@ class ScannerForegroundService : LifecycleService() {
     private fun startCamera() {
         val analyzer = QRCodeAnalyzer(
             scanIntervalMs = { ScannerState.getAdaptiveScanIntervalMs() },
-            onQRCodeFound = { rawValue ->
+            onQRCodeFound = { rawValue, rawBytes ->
                 ScannerState.recordDetection()
-                if (rawValue != ScannerState.lastCopiedText) {
-                    ScannerState.lastCopiedText = rawValue
-                    ScannerState.updateCurrentText(rawValue)
-                    copyToClipboard(rawValue)
-                    updateNotification(rawValue)
+
+                val chunkData = when {
+                    rawBytes != null -> rawBytes
+                    rawValue.isNotEmpty() -> rawValue.toByteArray(Charsets.ISO_8859_1)
+                    else -> return@QRCodeAnalyzer
+                }
+
+                val header = FileUtils.parseChunkHeader(chunkData)
+                if (header != null) {
+                    handleFileChunk(header, chunkData)
+                } else {
+                    if (rawValue.isNotEmpty() && rawValue != ScannerState.lastCopiedText) {
+                        ScannerState.lastCopiedText = rawValue
+                        ScannerState.updateCurrentText(rawValue)
+                        copyToClipboard(rawValue)
+                        updateNotification(rawValue)
+                    }
                 }
             },
             shouldCaptureFrame = { ScannerState.isPreviewMode.value },
@@ -76,6 +90,43 @@ class ScannerForegroundService : LifecycleService() {
         cameraManager.start(this, this, lensFacing, analyzer)
     }
 
+    private fun handleFileChunk(header: FileUtils.HeaderInfo, rawBytes: ByteArray) {
+        val text = "Receiving: ${header.filename} (${header.index + 1}/${header.total})"
+        Log.d(TAG, text)
+
+        ScannerState.updateDownloadHint("File: ${header.filename}  chunk ${header.index + 1}/${header.total}")
+        ScannerState.updateCurrentText("Receiving file: ${header.filename}")
+        updateNotification(text)
+
+        // Build transmissionId for grouping
+        val transmissionId = makeTransmissionId(header.filename, header.total)
+
+        // Create chunk info
+        val chunk = FilePacketState.ChunkInfo(
+            index = header.index,
+            total = header.total,
+            filename = header.filename,
+            payload = header.payload,
+            rawBytes = rawBytes,
+            transmissionId = transmissionId
+        )
+
+        // Persist and update state
+        FilePacketState.addChunk(chunk)
+    }
+
+    /**
+     * Build a transmission ID that groups chunks from the same file transmission.
+     * Uses the existing FilePacketState to find an incomplete group for same filename+total.
+     */
+    private fun makeTransmissionId(filename: String, total: Int): String {
+        // Find existing incomplete group
+        val existing = FilePacketState.chunkGroups.value.find { g ->
+            g.filename == filename && g.totalChunks == total && !g.isComplete
+        }
+        return existing?.transmissionId ?: "${filename}_${total}_${System.currentTimeMillis()}"
+    }
+
     private fun restartCamera() {
         cameraManager.stop()
         startCamera()
@@ -86,7 +137,6 @@ class ScannerForegroundService : LifecycleService() {
         cm.setPrimaryClip(ClipData.newPlainText("QR Code", text))
     }
 
-    /** 用最新扫描内容更新通知文本，超出长度截断并以 … 结尾 */
     private fun updateNotification(text: String) {
         val display = if (text.length > MAX_NOTIFY_TEXT_LEN)
             text.take(MAX_NOTIFY_TEXT_LEN) + "…"
@@ -99,10 +149,10 @@ class ScannerForegroundService : LifecycleService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "QRSC Scanner",
+                "QR文件传输",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "QR scanner service"
+                description = "扫描服务运行中"
                 setShowBadge(false)
             }
             notificationManager.createNotificationChannel(channel)
@@ -110,7 +160,7 @@ class ScannerForegroundService : LifecycleService() {
     }
 
     private fun buildNotification(text: String) = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setContentTitle("QRSC")
+        .setContentTitle("QR文件传输")
         .setContentText(text)
         .setSmallIcon(android.R.drawable.ic_menu_camera)
         .setOngoing(true)

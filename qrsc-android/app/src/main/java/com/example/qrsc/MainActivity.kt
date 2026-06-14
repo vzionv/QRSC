@@ -23,7 +23,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             QRSCTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    MainScreen(viewModel = viewModel)
+                    QRFileMainScreen(viewModel = viewModel)
                 }
             }
         }

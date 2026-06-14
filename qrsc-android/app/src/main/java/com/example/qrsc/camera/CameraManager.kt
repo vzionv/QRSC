@@ -29,7 +29,7 @@ import com.google.mlkit.vision.common.InputImage
 @OptIn(ExperimentalGetImage::class)
 class QRCodeAnalyzer(
     private val scanIntervalMs: () -> Long,
-    private val onQRCodeFound: (String) -> Unit,
+    private val onQRCodeFound: (String, ByteArray?) -> Unit,
     private val onFrame: ((Bitmap) -> Unit)? = null,
     private val shouldCaptureFrame: () -> Boolean = { true }
 ) : ImageAnalysis.Analyzer {
@@ -81,10 +81,13 @@ class QRCodeAnalyzer(
             scanner.process(image)
                 .addOnSuccessListener { barcodes ->
                     for (barcode in barcodes) {
-                        val rawValue = barcode.rawValue
-                        if (!rawValue.isNullOrEmpty()) {
-                            Log.d(TAG, "QR code found: ${rawValue.take(50)}")
-                            onQRCodeFound(rawValue)
+                        val rawValue = barcode.rawValue ?: ""
+                        val rawBytes = barcode.rawBytes
+                        // Check rawBytes first for file chunks, fall back to rawValue for text
+                        if (rawBytes != null || rawValue.isNotEmpty()) {
+                            val display = if (rawValue.isNotEmpty()) rawValue.take(50) else "(binary ${rawBytes?.size ?: 0}B)"
+                            Log.d(TAG, "QR code found: $display")
+                            onQRCodeFound(rawValue, rawBytes)
                         }
                     }
                 }

@@ -57,6 +57,12 @@ object ScannerState {
     private val _isCountingDown = MutableStateFlow(false)
     val isCountingDown: StateFlow<Boolean> = _isCountingDown.asStateFlow()
 
+    // ======= 文件传输提示 =======
+
+    private val _downloadHint = MutableStateFlow("")
+    val downloadHint: StateFlow<String> = _downloadHint.asStateFlow()
+    var lastFileChunkTimeMs: Long = 0L
+
     // ======= Service 内部使用的去重状态 =======
 
     var lastCopiedText: String = ""
@@ -102,6 +108,7 @@ object ScannerState {
                 _lockedBitmap.value = null
                 _isCountingDown.value = false
                 _countdownCurrent.value = 0
+                _downloadHint.value = ""
             }
             is ScannerCommand.ToggleCamera -> _isFrontCamera.value = !_isFrontCamera.value
             is ScannerCommand.SetInterval -> _scanIntervalMs.value = command.ms
@@ -113,6 +120,11 @@ object ScannerState {
 
     fun updateCurrentText(text: String) {
         _currentText.value = text
+    }
+
+    fun updateDownloadHint(text: String) {
+        _downloadHint.value = text
+        if (text.isNotEmpty()) lastFileChunkTimeMs = System.currentTimeMillis()
     }
 
     // ======= 预览操作方法 =======

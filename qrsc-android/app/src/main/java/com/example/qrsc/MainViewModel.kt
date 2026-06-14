@@ -17,6 +17,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var countdownJob: Job? = null
 
+    init {
+        FilePacketState.init(application)
+    }
+
     val currentText: StateFlow<String> = ScannerState.currentText
     val isScanning: StateFlow<Boolean> = ScannerState.isScanning
     val isFrontCamera: StateFlow<Boolean> = ScannerState.isFrontCamera
@@ -27,6 +31,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val countdownSetting: StateFlow<Int> = ScannerState.countdownSetting
     val countdownCurrent: StateFlow<Int> = ScannerState.countdownCurrent
     val isCountingDown: StateFlow<Boolean> = ScannerState.isCountingDown
+    val downloadHint: StateFlow<String> = ScannerState.downloadHint
 
     fun startScanning() {
         ScannerState.sendCommand(ScannerCommand.Start)
@@ -73,5 +78,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun cancelCountdown() {
         countdownJob?.cancel()
         ScannerState.cancelCountdown()
+    }
+
+    fun clearDownloadHint() {
+        ScannerState.updateDownloadHint("")
     }
 }
