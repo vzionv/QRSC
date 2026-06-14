@@ -1,6 +1,7 @@
 package com.example.qrsc
 
 import android.graphics.Bitmap
+import android.util.Log
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -23,6 +24,10 @@ sealed class ScannerCommand {
  */
 object ScannerState {
 
+    private const val TAG = "QRSC-State"
+    private const val MIN_SCAN_INTERVAL_MS = 100L
+    private const val MAX_SCAN_INTERVAL_MS = 5000L
+
     // ======= UI 展示状态 =======
 
     private val _currentText = MutableStateFlow("")
@@ -39,6 +44,7 @@ object ScannerState {
 
     // ======= 预览相关状态 =======
 
+    private val bitmapLock = Any()
     private val _previewBitmap = MutableStateFlow<Bitmap?>(null)
     val previewBitmap: StateFlow<Bitmap?> = _previewBitmap.asStateFlow()
 
@@ -67,6 +73,45 @@ object ScannerState {
 
     var lastCopiedText: String = ""
 
+    // ======= 处理管线状态 =======
+
+    private val _processingState = MutableStateFlow<CaptureProcessingState>(CaptureProcessingState.Idle)
+    val processingState: StateFlow<CaptureProcessingState> = _processingState.asStateFlow()
+
+    private val _isBlackScreen = MutableStateFlow(false)
+    val isBlackScreen: StateFlow<Boolean> = _isBlackScreen.asStateFlow()
+
+    private val _isCacheCapturing = MutableStateFlow(false)
+    val isCacheCapturing: StateFlow<Boolean> = _isCacheCapturing.asStateFlow()
+
+    private val _processingCancelled = MutableStateFlow(false)
+    val processingCancelled: StateFlow<Boolean> = _processingCancelled.asStateFlow()
+
+    fun updateProcessingState(state: CaptureProcessingState) {
+        Log.d(TAG, "updateProcessingState: $state")
+        _processingState.value = state
+    }
+
+    fun setIsBlackScreen(enabled: Boolean) {
+        Log.d(TAG, "setIsBlackScreen: $enabled")
+        _isBlackScreen.value = enabled
+    }
+
+    fun setCacheCapturing(enabled: Boolean) {
+        Log.d(TAG, "setCacheCapturing: $enabled")
+        _isCacheCapturing.value = enabled
+    }
+
+    fun requestProcessingCancellation() {
+        Log.d(TAG, "requestProcessingCancellation")
+        _processingCancelled.value = true
+    }
+
+    fun resetProcessingCancellation() {
+        Log.d(TAG, "resetProcessingCancellation")
+        _processingCancelled.value = false
+    }
+
     // ======= 自适应扫描间隔 =======
 
     private var lastDetectionTimeMs: Long = 0L
@@ -89,7 +134,7 @@ object ScannerState {
             sinceLastDetection < 300_000L -> 3.0
             else                         -> 5.0
         }
-        return (base * multiplier).toLong().coerceAtMost(5000L)
+        return (base * multiplier).toLong().coerceIn(MIN_SCAN_INTERVAL_MS, MAX_SCAN_INTERVAL_MS)
     }
 
     // ======= 命令通道：Activity → Service =======
@@ -100,29 +145,35 @@ object ScannerState {
     // ======= Activity 调用 =======
 
     fun sendCommand(command: ScannerCommand) {
+        Log.d(TAG, "sendCommand: $command")
         when (command) {
             is ScannerCommand.Start -> _isScanning.value = true
-            is ScannerCommand.Stop -> {
-                _isScanning.value = false
-                _isPreviewMode.value = false
-                _lockedBitmap.value = null
-                _isCountingDown.value = false
-                _countdownCurrent.value = 0
-                _downloadHint.value = ""
-            }
+            is ScannerCommand.Stop -> applyStoppedState()
             is ScannerCommand.ToggleCamera -> _isFrontCamera.value = !_isFrontCamera.value
-            is ScannerCommand.SetInterval -> _scanIntervalMs.value = command.ms
+            is ScannerCommand.SetInterval -> _scanIntervalMs.value = command.ms.coerceIn(MIN_SCAN_INTERVAL_MS, MAX_SCAN_INTERVAL_MS)
         }
         _commands.tryEmit(command)
+    }
+
+    private fun applyStoppedState() {
+        _isScanning.value = false
+        _processingState.value = CaptureProcessingState.Idle
+        _isPreviewMode.value = false
+        _isCountingDown.value = false
+        _countdownCurrent.value = 0
+        _downloadHint.value = ""
+        clearPreviewBitmaps()
     }
 
     // ======= Service 调用 =======
 
     fun updateCurrentText(text: String) {
+        Log.d(TAG, "updateCurrentText: len=${text.length}")
         _currentText.value = text
     }
 
     fun updateDownloadHint(text: String) {
+        Log.d(TAG, "updateDownloadHint: $text")
         _downloadHint.value = text
         if (text.isNotEmpty()) lastFileChunkTimeMs = System.currentTimeMillis()
     }
@@ -132,9 +183,9 @@ object ScannerState {
     fun togglePreviewMode() {
         _isPreviewMode.value = !_isPreviewMode.value
         if (!_isPreviewMode.value) {
-            _lockedBitmap.value = null
             _isCountingDown.value = false
             _countdownCurrent.value = 0
+            clearPreviewBitmaps()
         }
     }
 
@@ -154,13 +205,17 @@ object ScannerState {
     }
 
     fun lockPreview() {
-        _lockedBitmap.value = _previewBitmap.value
-        _isCountingDown.value = false
-        _countdownCurrent.value = 0
+        synchronized(bitmapLock) {
+            _lockedBitmap.value = _previewBitmap.value
+            _isCountingDown.value = false
+            _countdownCurrent.value = 0
+        }
     }
 
     fun unlockPreview() {
-        _lockedBitmap.value = null
+        synchronized(bitmapLock) {
+            _lockedBitmap.value = null
+        }
     }
 
     fun cancelCountdown() {
@@ -169,7 +224,22 @@ object ScannerState {
     }
 
     fun updatePreviewBitmap(bitmap: Bitmap?) {
-        if (bitmap == null) return
-        _previewBitmap.value = bitmap
+        synchronized(bitmapLock) {
+            if (bitmap == null) {
+                clearPreviewBitmapsLocked()
+                return
+            }
+            if (_previewBitmap.value === bitmap) return
+            _previewBitmap.value = bitmap
+        }
+    }
+
+    private fun clearPreviewBitmaps() {
+        synchronized(bitmapLock) { clearPreviewBitmapsLocked() }
+    }
+
+    private fun clearPreviewBitmapsLocked() {
+        _previewBitmap.value = null
+        _lockedBitmap.value = null
     }
 }
