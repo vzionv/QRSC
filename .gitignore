@@ -1,0 +1,73 @@
+# Ubuntu/Linux
+*~
+.DS_Store
+Thumbs.db
+.cache/
+.#*
+
+# Vim/Neovim
+[._]*.swp
+[._]*.swo
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+
+# Android Studio
+*.iml
+*.iws
+*.idea/
+*.gradle/
+local.properties
+.gradle/
+.DS_Store
+
+# Android Build Outputs
+*/app/build/
+*/app/*/build/
+*/app/*/intermediates/
+*/app/*/outputs/
+*/app/*/libs/
+*/app/*/externalLibs/
+.externalNativeBuild
+
+# Android Misc
+*.apk
+*.ap_
+*.aab
+*.keystore
+*.jks
+*.jar
+
+*.tmp
+*.log
+*.bak
+*.zip
+*.7z
+*.rar
+
+# sender runtime cache
+qr_send_cache/

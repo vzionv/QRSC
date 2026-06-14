@@ -1,0 +1,7 @@
+# 终端工具：无外部 Python 包依赖。
+# 仅可使用标准库 + conda env 预装包。
+# QR 编码全部自实现（无需 qrcode 库）。
+# X11 剪切板通过 ctypes 直接调用 libX11.so。
+#
+# 如果需要在 PyQt5 环境使用：
+# pip install PyQt5 numpy
