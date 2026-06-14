@@ -4,6 +4,8 @@ import sys,os,time,shutil
 E=[7,10,15,20,26,18,20,24,30,18,20,24,26,30,22,24,28,30,28,28,28,28,30,30,26,28,30,30,30,30,30,30,30,30,30,30,30,30,30,30]
 K=[1,1,1,1,1,2,2,2,2,4,4,4,4,4,6,6,6,6,7,8,8,9,9,10,12,12,12,13,14,15,16,17,18,19,19,20,21,22,24,25]
 CS=1200; CD='qr_send_cache'
+FT_INTERVAL=1000; CT_INTERVAL=800
+SLOW_RATIO=3; SLOW_INDEXS=[]
 
 def rm(v):
     r=(16*v+128)*v+64
@@ -208,8 +210,9 @@ def run():
             super().__init__(); self.app=app; self.last=None; self.mat=None; self.ch=[]; self.fn=''; self.i=0; self.sending=0; self.cache=0; self.msg='copy text or select file'
             self.setWindowTitle('SCQR'); self.resize(420,500); self.setMinimumSize(230,280)
             self._build_ui()
-            self.ct=QTimer(self); self.ct.timeout.connect(self.clip); self.ct.start(800)
+            self.ct=QTimer(self); self.ct.timeout.connect(self.clip); self.ct.start(CT_INTERVAL)
             self.ft=QTimer(self); self.ft.timeout.connect(self.next)
+            self.ct_interval=CT_INTERVAL; self.ft_interval=FT_INTERVAL; self.slow_ft_interval=FT_INTERVAL*SLOW_RATIO
             r=QApplication.primaryScreen().availableGeometry(); self.move(r.left(),r.bottom()-self.height()); self.clip()
         def _build_ui(self):
             v=QVBoxLayout(self); v.setSpacing(6); v.setContentsMargins(10,10,10,10)
@@ -246,9 +249,9 @@ def run():
         def go(self): self.stop() if self.sending else self.start()
         def start(self):
             if not self.ch: self.showmsg('select file first'); return
-            self.sending=True; self.ct.stop(); self.send.setText('Stop'); self.sel.setEnabled(False); os.makedirs(CD,exist_ok=True); self.ts=time.strftime('%H%M'); self.i=0; self.save(0); self.render(0); self.upd(); self.ft.start(3000)
+            self.sending=True; self.ct.stop(); self.send.setText('Stop'); self.sel.setEnabled(False); os.makedirs(CD,exist_ok=True); self.ts=time.strftime('%H%M'); self.i=0; self.save(0); self.render(0); self.upd(); self.ft.start(FT_INTERVAL)
         def stop(self):
-            self.sending=False; self.ft.stop(); self.ct.start(800); self.send.setText('Send'); self.sel.setEnabled(True); self.showmsg('stopped')
+            self.sending=False; self.ft.stop(); self.ct.start(CT_INTERVAL); self.send.setText('Send'); self.sel.setEnabled(True); self.showmsg('stopped')
         def save(self,i):
             if not self.cache:
                 p=cpath(self.fn,self.ts,i)
@@ -257,8 +260,12 @@ def run():
                         f.write(self.ch[i])
         def next(self):
             self.i+=1
+            if self.i in SLOW_INDEXS and self.ft_interval!=self.slow_ft_interval:
+                self.ft.stop(); self.ft.start(self.slow_ft_interval); self.ft_interval=self.slow_ft_interval
+            elif self.i not in SLOW_INDEXS and self.ft_interval!=FT_INTERVAL:
+                self.ft.stop(); self.ft.start(FT_INTERVAL); self.ft_interval=FT_INTERVAL
             if self.i>=len(self.ch):
-                self.sending=False; self.ft.stop(); self.ct.start(800); self.send.setText('Send'); self.sel.setEnabled(True); self.showmsg('done %s (%d chunks)'%(self.fn,len(self.ch))); return
+                self.sending=False; self.ft.stop(); self.ft_interval=FT_INTERVAL; self.ct.start(CT_INTERVAL); self.send.setText('Send'); self.sel.setEnabled(True); self.showmsg('done %s (%d chunks)'%(self.fn,len(self.ch))); return
             self.save(self.i); self.render(self.i); self.upd()
         def render(self,i):
             try: self.mat,self.v,self.n=qr(self.ch[i],0)

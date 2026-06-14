@@ -234,6 +234,9 @@ SCQR_VERSION = 1
 CHUNK_SIZE = 1200  # bytes per chunk payload (excluding header)
 START_CHUNK = 0  # set to N to skip first N chunks on send
 OVERHEAD_MAX = 11 + 255  # header fixed + max filename
+FT_INTERVAL = 1000  # ms between chunks (base)
+SLOW_RATIO = 3  # multiplier for slow chunks
+SLOW_INDEXS = {}  # indices that get extra display time (empty = disabled)
 
 def make_chunk_header(total, index, filename, is_last):
     """Build binary header: 11 fixed bytes + filename."""
@@ -363,9 +366,11 @@ class FileQRWidget(QWidget):
         # Build UI
         self._build_ui()
 
-        # Timer for 3-second cycling
+        # Timer for chunk cycling (adaptive interval)
         self.display_timer = QTimer(self)
         self.display_timer.timeout.connect(self._show_next_chunk)
+        self.ft_interval = FT_INTERVAL
+        self.slow_ft_interval = FT_INTERVAL * SLOW_RATIO
 
     def _build_ui(self):
         layout = QVBoxLayout()
@@ -489,8 +494,9 @@ class FileQRWidget(QWidget):
         self._render_chunk(START_CHUNK)
         self._update_status()
 
-        # Start 3-second timer
-        self.display_timer.start(3000)
+        # Start chunk cycling timer
+        self.display_timer.start(FT_INTERVAL)
+        self.ft_interval = FT_INTERVAL
 
     def _stop_sending(self):
         self.is_sending = False
@@ -516,12 +522,22 @@ class FileQRWidget(QWidget):
         if self.chunk_index >= self.total_chunks:
             # Transmission complete
             self.display_timer.stop()
+            self.ft_interval = FT_INTERVAL
             self.is_sending = False
             self.send_btn.setText('Send')
             self.browse_btn.setEnabled(True)
             self.status_msg = f'Transfer complete: {self.filename} ({self.total_chunks} chunks)'
             self.status_label.setText(self.status_msg)
             return
+        # Adaptive interval: slow chunks get extra display time
+        if self.chunk_index in SLOW_INDEXS and self.ft_interval != self.slow_ft_interval:
+            self.display_timer.stop()
+            self.display_timer.start(self.slow_ft_interval)
+            self.ft_interval = self.slow_ft_interval
+        elif self.chunk_index not in SLOW_INDEXS and self.ft_interval != FT_INTERVAL:
+            self.display_timer.stop()
+            self.display_timer.start(FT_INTERVAL)
+            self.ft_interval = FT_INTERVAL
         self._write_cache(self.chunk_index)
         self._render_chunk(self.chunk_index)
         self._update_status()

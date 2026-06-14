@@ -232,7 +232,7 @@ def fileqr(path,once=0):
             show(m,'chunk %03d/%03d | %d%% | %s | %d bytes | QR v%d'%(i+1,len(ch),(i+1)*100//len(ch),fn,n,v))
             if once: break
             i+=1
-            if i<len(ch): time.sleep(3)
+            if i<len(ch): time.sleep(1)
         if not once: print('done %s (%d chunks)'%(fn,len(ch)))
     except KeyboardInterrupt:
         print('\nstopped')

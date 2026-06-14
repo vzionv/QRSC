@@ -4,6 +4,7 @@ import sys,os,time,shutil
 E=[7,10,15,20,26,18,20,24,30,18,20,24,26,30,22,24,28,30,28,28,28,28,30,30,26,28,30,30,30,30,30,30,30,30,30,30,30,30,30,30]
 K=[1,1,1,1,1,2,2,2,2,4,4,4,4,4,6,6,6,6,7,8,8,9,9,10,12,12,12,13,14,15,16,17,18,19,19,20,21,22,24,25]
 CS=1200; CD='qr_send_cache'
+FT=1000; SR=3; SI=set()
 
 def rm(v):
     r=(16*v+128)*v+64
@@ -254,7 +255,7 @@ def run():
             if not self.ch: self.show('select file first'); return
             self.sending=1
             if self.ca: self.r.after_cancel(self.ca); self.ca=0
-            self.send.config(text='Stop'); self.sel.config(state='disabled'); os.makedirs(CD,exist_ok=True); self.ts=time.strftime('%H%M'); self.i=0; self.save(0); self.render(0); self.upd(); self.fa=self.r.after(3000,self.next)
+            self.send.config(text='Stop'); self.sel.config(state='disabled'); os.makedirs(CD,exist_ok=True); self.ts=time.strftime('%H%M'); self.i=0; self.save(0); self.render(0); self.upd(); self.fa=self.r.after(FT,self.next); self.fti=FT
         def stop(self):
             self.sending=0
             if self.fa: self.r.after_cancel(self.fa); self.fa=0
@@ -267,8 +268,10 @@ def run():
         def next(self):
             self.fa=0; self.i+=1
             if self.i>=len(self.ch):
-                self.sending=0; self.send.config(text='Send'); self.sel.config(state='normal'); self.show('done %s (%d chunks)'%(self.fn,len(self.ch))); self.aftc(); return
-            self.save(self.i); self.render(self.i); self.upd(); self.fa=self.r.after(3000,self.next)
+                self.sending=0; self.fti=FT; self.send.config(text='Send'); self.sel.config(state='normal'); self.show('done %s (%d chunks)'%(self.fn,len(self.ch))); self.aftc(); return
+            iv=FT*SR if self.i in SI else FT
+            if iv!=self.fti: self.fti=iv
+            self.save(self.i); self.render(self.i); self.upd(); self.fa=self.r.after(self.fti,self.next)
         def render(self,i):
             try: self.mat,self.v,self.n=qr(self.ch[i],0)
             except Exception as e: self.mat=None; self.show('QR error '+str(e))
